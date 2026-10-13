@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Local Estilo Kahoot</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        .option-btn { transition: transform 0.1s; }
+        .option-btn:active { transform: scale(0.97); }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- TELA INICIAL: ESCOLHA DE MODO -->
+    <div id="home-screen" class="w-full max-w-md bg-slate-800 p-8 rounded-2xl shadow-2xl text-center border border-slate-700">
+        <h1 class="text-3xl font-black mb-6 text-indigo-400">Quiz Local 🚀</h1>
+        <p class="text-slate-400 mb-6 text-sm">Crie perguntas no PC e permita que os participantes entrem via celular escaneando o QR Code.</p>
+        
+        <div class="space-y-4">
+            <button onclick="showHostSetup()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">Criar Quiz (Host)</button>
+            <button onclick="showClientJoin()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl shadow-lg transition">Entrar em um Quiz (Jogador)</button>
+        </div>
+    </div>
+
+    <!-- TELA 1: SETUP DO HOST (Criação de Perguntas) -->
+    <div id="host-setup-screen" class="hidden w-full max-w-2xl bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-700">
+        <h2 class="text-2xl font-bold mb-4 text-indigo-400">Configurar Perguntas</h2>
+        
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-1">Título do Quiz</label>
+            <input type="text" id="quiz-title" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white" value="Meu Super Quiz">
+        </div>
+
+        <div id="questions-container" class="space-y-4 mb-4 max-h-96 overflow-y-auto pr-2">
+            <!-- Perguntas injetadas via JS -->
+        </div>
+
+        <div class="flex gap-2 mb-6">
+            <button onclick="addQuestionField()" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold">+ Adicionar Pergunta</button>
+            <button onclick="startHosting()" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-bold shadow-lg">Iniciar Quiz 🎯</button>
+        </div>
+        <button onclick="location.reload()" class="text-sm text-slate-400 hover:text-white underline">Voltar</button>
+    </div>
+
+    <!-- TELA 2: LOBBY DO HOST (QR Code e Jogadores) -->
+    <div id="host-lobby-screen" class="hidden w-full max-w-xl bg-slate-800 p-8 rounded-2xl shadow-2xl text-center border border-slate-700">
+        <h2 class="text-2xl font-bold mb-2 text-indigo-400">Sala Pronta!</h2>
+        <p class="text-slate-400 text-sm mb-6">Escaneie o QR Code abaixo com a câmera do celular para entrar:</p>
+        
+        <div class="bg-white p-4 inline-block rounded-xl mb-4 shadow-inner" id="qrcode"></div>
+        <p class="text-xs text-slate-400 mb-6 font-mono break-all" id="room-link-text"></p>
+
+        <div class="bg-slate-900 p-4 rounded-xl mb-6 text-left">
+            <h3 class="font-bold text-sm text-slate-300 mb-2">Jogadores Conectados (<span id="player-count">0</span>):</h3>
+            <ul id="player-list" class="flex flex-wrap gap-2">
+                <li class="text-slate-500 text-sm italic">Aguardando participantes...</li>
+            </ul>
+        </div>
+
+        <button onclick="beginQuizLoop()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl shadow-lg transition text-lg">Começar Jogo Agora!</button>
+    </div>
+
+    <!-- TELA 3: TELA DE JOGO DO HOST (Painel Principal) -->
+    <div id="host-game-screen" class="hidden w-full max-w-4xl bg-black min-h-[85vh] rounded-2xl p-8 flex flex-col justify-between border border-slate-800 shadow-2xl">
+        <div class="flex justify-between items-center text-slate-400">
+            <span id="host-q-counter" class="text-lg font-bold">Pergunta 1/3</span>
+            <div id="host-timer" class="text-3xl font-black text-amber-400">15</div>
+            <span id="host-answers-count" class="text-lg">Respostas: 0/0</span>
+        </div>
+
+        <div class="text-center my-auto">
+            <h2 id="host-q-text" class="text-4xl md:text-6xl font-extrabold tracking-tight mb-8">Carregando pergunta...</h2>
+            
+            <div id="host-options-grid" class="grid grid-cols-2 gap-4 max-w-2xl mx-auto hidden">
+                <div class="p-6 bg-red-600 rounded-xl font-bold text-xl shadow-lg">🔴 <span id="opt-text-0"></span></div>
+                <div class="p-6 bg-blue-600 rounded-xl font-bold text-xl shadow-lg">🔵 <span id="opt-text-1"></span></div>
+                <div class="p-6 bg-amber-500 rounded-xl font-bold text-xl shadow-lg text-slate-900">🟡 <span id="opt-text-2"></span></div>
+                <div class="p-6 bg-emerald-600 rounded-xl font-bold text-xl shadow-lg">🟢 <span id="opt-text-3"></span></div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <button id="next-question-btn" onclick="nextQuestion()" class="hidden px-8 py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg">Próxima Pergunta ➔</button>
+        </div>
+    </div>
+
+    <!-- TELA 4: PLACAR FINAL DO HOST -->
+    <div id="host-results-screen" class="hidden w-full max-w-2xl bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 text-center">
+        <h2 class="text-3xl font-black mb-6 text-indigo-400">🏆 Fim do Quiz!</h2>
+        <div id="final-scoreboard" class="space-y-3 mb-6 text-left"></div>
+        <button onclick="location.reload()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg">Jogar Novamente</button>
+    </div>
+
+    <!-- TELA 5: ENTRADA DO JOGADOR (Celular) -->
+    <div id="client-join-screen" class="hidden w-full max-w-md bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+        <h2 class="text-2xl font-bold mb-4 text-emerald-400 text-center">Entrar no Quiz</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-semibold mb-1">ID da Sala (Host)</label>
+                <input type="text" id="join-room-id" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white uppercase" placeholder="Cole o ID aqui">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold mb-1">Seu Nome / Identificação</label>
+                <input type="text" id="player-name" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white" placeholder="Ex: João">
+            </div>
+            <button onclick="connectToHost()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl shadow-lg transition">Entrar na Sala</button>
+            <button onclick="location.reload()" class="w-full text-sm text-slate-400 hover:text-white underline">Voltar</button>
+        </div>
+    </div>
+
+    <!-- TELA 6: INTERFACE DE RESPOSTA DO JOGADOR (Celular) -->
+    <div id="client-game-screen" class="hidden w-full max-w-md min-h-[80vh] flex flex-col justify-between">
+        <div class="text-center bg-slate-800 p-4 rounded-xl border border-slate-700">
+            <h3 id="client-status" class="font-bold text-slate-300">Aguardando o host iniciar...</h3>
+        </div>
+
+        <div id="client-buttons-grid" class="grid grid-cols-2 gap-4 my-auto h-96 hidden">
+            <button onclick="sendAnswer(0)" class="option-btn bg-red-600 hover:bg-red-500 rounded-2xl shadow-2xl font-black text-4xl flex items-center justify-center">🔴</button>
+            <button onclick="sendAnswer(1)" class="option-btn bg-blue-600 hover:bg-blue-500 rounded-2xl shadow-2xl font-black text-4xl flex items-center justify-center">🔵</button>
+            <button onclick="sendAnswer(2)" class="option-btn bg-amber-500 hover:bg-amber-400 rounded-2xl shadow-2xl font-black text-4xl flex items-center justify-center">🟡</button>
+            <button onclick="sendAnswer(3)" class="option-btn bg-emerald-600 hover:bg-emerald-500 rounded-2xl shadow-2xl font-black text-4xl flex items-center justify-center">🟢</button>
+        </div>
+
+        <div id="client-feedback" class="text-center text-xl font-bold py-6 hidden"></div>
+    </div>
+
+    <script>
+        let peer = null;
+        let connections = {}; // Host: id -> conn
+        let hostConnection = null; // Client: conn
+        let quizData = [];
+        let currentQuestionIndex = 0;
+        let timerInterval = null;
+        let playersScores = {}; // name -> score
+        let currentAnswersReceived = 0;
+
+        // Auto-detect if joining via URL parameter
+        window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const room = urlParams.get('room');
+            if (room) {
+                document.getElementById('home-screen').classList.add('hidden');
+                document.getElementById('client-join-screen').classList.remove('hidden');
+                document.getElementById('join-room-id').value = room;
+            } else {
+                setupDefaultQuestions();
+            }
+        };
+
+        function setupDefaultQuestions() {
+            quizData = [
+                {
+                    question: "Quanto é 2 + 2?",
+                    options: ["3", "4", "5", "22"],
+                    correct: 1,
+                    time: 10
+                },
+                {
+                    question: "Qual a capital da França?",
+                    options: ["Londres", "Berlim", "Paris", "Roma"],
+                    correct: 2,
+                    time: 10
+                }
+            ];
+            renderQuestionsEditor();
+        }
+
+        function renderQuestionsEditor() {
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+            quizData.forEach((q, idx) => {
+                container.innerHTML += `
+                    <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-sm text-indigo-400">Pergunta ${idx + 1}</span>
+                            <button onclick="removeQuestion(${idx})" class="text-red-400 text-xs hover:underline">Remover</button>
+                        </div>
+                        <input type="text" value="${q.question}" onchange="updateQText(${idx}, this.value)" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" placeholder="Texto da pergunta">
+                        <div class="grid grid-cols-2 gap-2">
+                            ${q.options.map((opt, oIdx) => `
+                                <div class="flex items-center gap-1">
+                                    <input type="radio" name="correct-${idx}" ${q.correct === oIdx ? 'checked' : ''} onchange="setCorrect(${idx},${oIdx})">
+                                    <input type="text" value="${opt}" onchange="updateOptText(${idx},${oIdx}, this.value)" class="w-full bg-slate-800 border border-slate-700 rounded p-1 text-xs text-white" placeholder="Alternativa ${oIdx+1}">
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="flex items-center gap-2 pt-1">
+                            <span class="text-xs text-slate-400">Tempo (s):</span>
+                            <input type="number" value="${q.time || 10}" onchange="updateTime(${idx}, this.value)" class="w-16 bg-slate-800 border border-slate-700 rounded p-1 text-xs text-white">
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function addQuestionField() {
+            quizData.push({ question: "Nova Pergunta", options: ["Op 1", "Op 2", "Op 3", "Op 4"], correct: 0, time: 10 });
+            renderQuestionsEditor();
+        }
+
+        function removeQuestion(idx) {
+            quizData.splice(idx, 1);
+            renderQuestionsEditor();
+        }
+
+        function updateQText(idx, val) { quizData[idx].question = val; }
+        function updateOptText(idx, oIdx, val) { quizData[idx].options[oIdx] = val; }
+        function setCorrect(idx, oIdx) { quizData[idx].correct = oIdx; }
+        function updateTime(idx, val) { quizData[idx].time = parseInt(val) || 10; }
+
+        function showHostSetup() {
+            document.getElementById('home-screen').classList.add('hidden');
+            document.getElementById('host-setup-screen').classList.remove('hidden');
+        }
+
+        function showClientJoin() {
+            document.getElementById('home-screen').classList.add('hidden');
+            document.getElementById('client-join-screen').classList.remove('hidden');
+        }
+
+        // HOST PEER SETUP
+        function startHosting() {
+            document.getElementById('host-setup-screen').classList.add('hidden');
+            document.getElementById('host-lobby-screen').classList.remove('hidden');
+
+            peer = new Peer();
+            peer.on('open', (id) => {
+                const roomLink = window.location.origin + window.location.pathname + '?room=' + id;
+                document.getElementById('room-link-text').innerText = roomLink;
+                
+                document.getElementById('qrcode').innerHTML = "";
+                new QRCode(document.getElementById("qrcode"), {
+                    text: roomLink,
+                    width: 180,
+                    height: 180
+                });
+            });
+
+            peer.on('connection', (conn) => {
+                conn.on('data', (data) => {
+                    if (data.type === 'JOIN') {
+                        connections[conn.peer] = { conn: conn, name: data.name };
+                        playersScores[data.name] = 0;
+                        updatePlayerList();
+                    } else if (data.type === 'ANSWER') {
+                        handleClientAnswer(data.name, data.option);
+                    }
+                });
+            });
+        }
+
+        function updatePlayerList() {
+            const listEl = document.getElementById('player-list');
+            const countEl = document.getElementById('player-count');
+            const names = Object.values(connections).map(c => c.name);
+            countEl.innerText = names.length;
+            if (names.length === 0) {
+                listEl.innerHTML = `<li class="text-slate-500 text-sm italic">Aguardando participantes...</li>`;
+            } else {
+                listEl.innerHTML = names.map(n => `<span class="bg-indigo-900 text-indigo-200 px-3 py-1 rounded-full text-xs font-bold">${n}</span>`).join('');
+            }
+        }
+
+        function beginQuizLoop() {
+            document.getElementById('host-lobby-screen').classList.add('hidden');
+            document.getElementById('host-game-screen').classList.remove('hidden');
+            currentQuestionIndex = 0;
+            loadQuestionHost();
+        }
+
+        function loadQuestionHost() {
+            if (currentQuestionIndex >= quizData.length) {
+                showFinalResults();
+                return;
+            }
+
+            const q = quizData[currentQuestionIndex];
+            document.getElementById('host-q-counter').innerText = `Pergunta ${currentQuestionIndex + 1}/${quizData.length}`;
+            document.getElementById('host-q-text').innerText = q.question;
+            document.getElementById('host-options-grid').classList.remove('hidden');
+            q.options.forEach((opt, idx) => {
+                document.getElementById(`opt-text-${idx}`).innerText = opt;
+            });
+            document.getElementById('next-question-btn').classList.add('hidden');
+            
+            currentAnswersReceived = 0;
+            updateAnswersCountDisplay();
+
+            // Broadcast question to clients
+            broadcastToAll({
+                type: 'NEW_QUESTION',
+                question: q.question,
+                options: q.options,
+                time: q.time
+            });
+
+            startHostTimer(q.time);
+        }
+
+        function updateAnswersCountDisplay() {
+            const totalPlayers = Object.keys(connections).length;
+            document.getElementById('host-answers-count').innerText = `Respostas: ${currentAnswersReceived}/${totalPlayers}`;
+        }
+
+        let questionAnswersMap = {}; // peerId -> chosen option
+        function startHostTimer(seconds) {
+            let timeLeft = seconds;
+            const timerEl = document.getElementById('host-timer');
+            timerEl.innerText = timeLeft;
+            questionAnswersMap = {};
+
+            if (timerInterval) clearInterval(timerInterval);
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    endQuestionHost();
+                }
+            }, 1000);
+        }
+
+        function handleClientAnswer(name, option) {
+            // Find peer by name
+            for (let peerId in connections) {
+                if (connections[peerId].name === name) {
+                    if (!questionAnswersMap[peerId]) {
+                        questionAnswersMap[peerId] = option;
+                        currentAnswersReceived++;
+                        updateAnswersCountDisplay();
+
+                        const q = quizData[currentQuestionIndex];
+                        if (option === q.correct) {
+                            playersScores[name] = (playersScores[name] || 0) + 100;
+                        }
+                    }
+                }
+            }
+        }
+
+        function endQuestionHost() {
+            if (timerInterval) clearInterval(timerInterval);
+            const q = quizData[currentQuestionIndex];
+            
+            // Notify clients correct answer
+            broadcastToAll({
+                type: 'QUESTION_OVER',
+                correct: q.correct
+            });
+
+            document.getElementById('next-question-btn').classList.remove('hidden');
+        }
+
+        function nextQuestion() {
+            currentQuestionIndex++;
+            loadQuestionHost();
+        }
+
+        function showFinalResults() {
+            document.getElementById('host-game-screen').classList.add('hidden');
+            document.getElementById('host-results-screen').classList.remove('hidden');
+
+            const sorted = Object.entries(playersScores).sort((a, b) => b[1] - a[1]);
+            const boardEl = document.getElementById('final-scoreboard');
+            boardEl.innerHTML = sorted.map(([name, score], idx) => `
+                <div class="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <span class="font-bold text-lg">${idx + 1}º - ${name}</span>
+                    <span class="text-indigo-400 font-black">${score} pts</span>
+                </div>
+            `).join('') || '<p class="text-slate-400">Nenhum participante pontuou.</p>';
+        }
+
+        function broadcastToAll(data) {
+            for (let peerId in connections) {
+                connections[peerId].conn.send(data);
+            }
+        }
+
+        // CLIENT LOGIC
+        function connectToHost() {
+            const roomId = document.getElementById('join-room-id').value.trim();
+            const playerName = document.getElementById('player-name').value.trim();
+
+            if (!roomId || !playerName) {
+                alert('Preencha o ID da sala e o seu nome.');
+                return;
+            }
+
+            peer = new Peer();
+            peer.on('open', () => {
+                hostConnection = peer.connect(roomId);
+                
+                hostConnection.on('open', () => {
+                    hostConnection.send({ type: 'JOIN', name: playerName });
+                    document.getElementById('client-join-screen').classList.add('hidden');
+                    document.getElementById('client-game-screen').classList.remove('hidden');
+                    window.myClientName = playerName;
+                });
+
+                hostConnection.on('data', (data) => {
+                    if (data.type === 'NEW_QUESTION') {
+                        setupClientQuestion(data.options, data.time);
+                    } else if (data.type === 'QUESTION_OVER') {
+                        showClientResult(data.correct);
+                    }
+                });
+            });
+        }
+
+        function setupClientQuestion(options, time) {
+            document.getElementById('client-status').innerText = "Responda rápido!";
+            document.getElementById('client-buttons-grid').classList.remove('hidden');
+            document.getElementById('client-feedback').classList.add('hidden');
+            window.answeredCurrent = false;
+        }
+
+        function sendAnswer(optionIndex) {
+            if (window.answeredCurrent) return;
+            window.answeredCurrent = true;
+
+            document.getElementById('client-buttons-grid').classList.add('hidden');
+            document.getElementById('client-status').innerText = "Resposta enviada! Aguardando o resultado...";
+
+            hostConnection.send({
+                type: 'ANSWER',
+                name: window.myClientName,
+                option: optionIndex
+            });
+        }
+
+        function showClientResult(correctOption) {
+            document.getElementById('client-buttons-grid').classList.add('hidden');
+            document.getElementById('client-status').innerText = "Fim do tempo!";
+            const fb = document.getElementById('client-feedback');
+            fb.classList.remove('hidden');
+            fb.innerText = "Aguardando próxima pergunta do host...";
+        }
+    </script>
+</body>
+</html>
