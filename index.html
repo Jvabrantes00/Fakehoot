@@ -91,9 +91,16 @@
     </div>
 
     <!-- TELA 4: PLACAR FINAL DO HOST -->
-    <div id="host-results-screen" class="hidden w-full max-w-2xl p-8 text-center">
+    <div id="host-results-screen" class="hidden w-full max-w-2xl p-8 text-center mx-auto my-auto">
         <h2 class="text-4xl font-black mb-6 text-indigo-400">🏆 Fim do Quiz!</h2>
-        <div id="final-scoreboard" class="space-y-3 mb-8 text-left"></div>
+        <div class="mb-6 text-left">
+            <h3 class="font-bold text-lg mb-2 text-slate-300">Classificação Final:</h3>
+            <div id="final-scoreboard" class="space-y-3"></div>
+        </div>
+        <div class="mb-8 text-left">
+            <h3 class="font-bold text-lg mb-2 text-slate-300">Acertos por Questão:</h3>
+            <div id="question-stats-board" class="space-y-2"></div>
+        </div>
         <button onclick="location.reload()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">Jogar Novamente</button>
     </div>
 
@@ -138,6 +145,7 @@
         let currentQuestionIndex = 0;
         let timerInterval = null;
         let playersScores = {}; 
+        let questionCorrectCounts = []; // Conta acertos por questão
         let currentAnswersReceived = 0;
 
         window.onload = () => {
@@ -188,6 +196,7 @@
                     time: 40
                 }
             ];
+            questionCorrectCounts = new Array(quizData.length).fill(0);
             renderQuestionsEditor();
         }
 
@@ -221,11 +230,13 @@
 
         function addQuestionField() {
             quizData.push({ question: "Nova Pergunta", options: ["Op 1", "Op 2", "Op 3", "Op 4"], correct: 0, time: 20 });
+            questionCorrectCounts = new Array(quizData.length).fill(0);
             renderQuestionsEditor();
         }
 
         function removeQuestion(idx) {
             quizData.splice(idx, 1);
+            questionCorrectCounts = new Array(quizData.length).fill(0);
             renderQuestionsEditor();
         }
 
@@ -290,6 +301,7 @@
             document.getElementById('host-lobby-screen').classList.add('hidden');
             document.getElementById('host-game-screen').classList.remove('hidden');
             currentQuestionIndex = 0;
+            questionCorrectCounts = new Array(quizData.length).fill(0);
             loadQuestionHost();
         }
 
@@ -356,6 +368,7 @@
                         const q = quizData[currentQuestionIndex];
                         if (option === q.correct) {
                             playersScores[name] = (playersScores[name] || 0) + 100;
+                            questionCorrectCounts[currentQuestionIndex]++;
                         }
                     }
                 }
@@ -383,14 +396,30 @@
             document.getElementById('host-game-screen').classList.add('hidden');
             document.getElementById('host-results-screen').classList.remove('hidden');
 
+            // Placar geral
             const sorted = Object.entries(playersScores).sort((a, b) => b[1] - a[1]);
             const boardEl = document.getElementById('final-scoreboard');
             boardEl.innerHTML = sorted.map(([name, score], idx) => `
-                <div class="flex justify-between items-center bg-zinc-950 p-4 rounded-xl border border-zinc-900">
-                    <span class="font-bold text-lg">${idx + 1}º - ${name}</span>
+                <div class="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-900">
+                    <span class="font-bold text-base">${idx + 1}º - ${name}</span>
                     <span class="text-indigo-400 font-black">${score} pts</span>
                 </div>
-            `).join('') || '<p class="text-slate-500">Nenhum participante pontuou.</p>';
+            `).join('') || '<p class="text-slate-500 text-sm">Nenhum participante pontuou.</p>';
+
+            // Acertos por questão
+            const statsEl = document.getElementById('question-stats-board');
+            statsEl.innerHTML = questionCorrectCounts.map((count, idx) => `
+                <div class="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-900 text-sm">
+                    <span class="text-slate-300">Questão ${idx + 1}</span>
+                    <span class="text-emerald-400 font-bold">${count} acerto(s)</span>
+                </div>
+            `).join('');
+
+            // Envia pontuação final para os clientes
+            broadcastToAll({
+                type: 'QUIZ_OVER',
+                scores: playersScores
+            });
         }
 
         function broadcastToAll(data) {
@@ -424,6 +453,8 @@
                         setupClientQuestion(data.options, data.time);
                     } else if (data.type === 'QUESTION_OVER') {
                         showClientResult(data.correct);
+                    } else if (data.type === 'QUIZ_OVER') {
+                        showClientFinalScore(data.scores);
                     }
                 });
             });
@@ -456,6 +487,15 @@
             const fb = document.getElementById('client-feedback');
             fb.classList.remove('hidden');
             fb.innerText = "Aguardando próxima pergunta do host...";
+        }
+
+        function showClientFinalScore(scores) {
+            document.getElementById('client-buttons-grid').classList.add('hidden');
+            const myFinalScore = scores[window.myClientName] || 0;
+            document.getElementById('client-status').innerText = "Fim do Quiz! 🎉";
+            const fb = document.getElementById('client-feedback');
+            fb.classList.remove('hidden');
+            fb.innerHTML = `Sua pontuação final:<br><span class="text-3xl text-indigo-400 font-black">${myFinalScore} pontos</span>`;
         }
     </script>
 </body>
