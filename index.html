@@ -97,11 +97,15 @@
             <h3 class="font-bold text-lg mb-2 text-slate-300">Classificação Final:</h3>
             <div id="final-scoreboard" class="space-y-3"></div>
         </div>
-        <div class="mb-8 text-left">
+        <div class="mb-6 text-left">
             <h3 class="font-bold text-lg mb-2 text-slate-300">Acertos por Questão:</h3>
             <div id="question-stats-board" class="space-y-2"></div>
         </div>
-        <button onclick="location.reload()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">Jogar Novamente</button>
+        
+        <div class="space-y-3">
+            <button onclick="downloadParticipantList()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl shadow-lg transition">📥 Baixar Lista de Respostas (TXT)</button>
+            <button onclick="location.reload()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl shadow-lg transition">Jogar Novamente</button>
+        </div>
     </div>
 
     <!-- TELA 5: ENTRADA DO JOGADOR (Celular) -->
@@ -115,6 +119,10 @@
             <div>
                 <label class="block text-sm font-semibold mb-1 text-slate-400">Seu Nome / Identificação</label>
                 <input type="text" id="player-name" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500" placeholder="Ex: João">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold mb-1 text-slate-400">Matrícula</label>
+                <input type="text" id="player-matricula" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500" placeholder="Ex: 202612345">
             </div>
             <button onclick="connectToHost()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl shadow-lg transition">Entrar na Sala</button>
             <button onclick="location.reload()" class="w-full text-center text-sm text-slate-500 hover:text-slate-300 underline pt-2">Voltar</button>
@@ -145,7 +153,7 @@
         let currentQuestionIndex = 0;
         let timerInterval = null;
         let playersScores = {}; 
-        let questionCorrectCounts = []; // Conta acertos por questão
+        let questionCorrectCounts = []; 
         let currentAnswersReceived = 0;
 
         window.onload = () => {
@@ -171,7 +179,7 @@
                         "Ruído mecânico ou térmico, medido em lux (lx)."
                     ],
                     correct: 1,
-                    time: 40
+                    time: 20
                 },
                 {
                     question: "Sobre a instrumentação técnica utilizada na avaliação do ruído ocupacional, qual é a principal aplicação do decibelímetro em comparação com o dosímetro?",
@@ -182,7 +190,7 @@
                         "O decibelímetro mede o ruído de impacto na fonte, enquanto o dosímetro avalia a reverberação acústica das paredes."
                     ],
                     correct: 0,
-                    time: 40
+                    time: 20
                 },
                 {
                     question: "Considerando a hierarquia de medidas de controle descrita para a gestão de riscos físicos (NR-01 e NR-09), qual é a diretriz legal correta em relação à prioridade das ações de proteção?",
@@ -193,7 +201,7 @@
                         "O tratamento acústico do ambiente deve ser evitado, focando-se exclusivamente na remoção dos trabalhadores do local."
                     ],
                     correct: 2,
-                    time: 40
+                    time: 20
                 }
             ];
             questionCorrectCounts = new Array(quizData.length).fill(0);
@@ -275,7 +283,7 @@
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
                     if (data.type === 'JOIN') {
-                        connections[conn.peer] = { conn: conn, name: data.name };
+                        connections[conn.peer] = { conn: conn, name: data.name, matricula: data.matricula };
                         playersScores[data.name] = 0;
                         updatePlayerList();
                     } else if (data.type === 'ANSWER') {
@@ -288,12 +296,12 @@
         function updatePlayerList() {
             const listEl = document.getElementById('player-list');
             const countEl = document.getElementById('player-count');
-            const names = Object.values(connections).map(c => c.name);
-            countEl.innerText = names.length;
-            if (names.length === 0) {
+            const players = Object.values(connections);
+            countEl.innerText = players.length;
+            if (players.length === 0) {
                 listEl.innerHTML = `<li class="text-slate-500 text-sm italic">Aguardando participantes...</li>`;
             } else {
-                listEl.innerHTML = names.map(n => `<span class="bg-indigo-950 border border-indigo-900 text-indigo-300 px-3 py-1 rounded-full text-xs font-bold">${n}</span>`).join('');
+                listEl.innerHTML = players.map(p => `<span class="bg-indigo-950 border border-indigo-900 text-indigo-300 px-3 py-1 rounded-full text-xs font-bold">${p.name} (${p.matricula})</span>`).join('');
             }
         }
 
@@ -396,7 +404,6 @@
             document.getElementById('host-game-screen').classList.add('hidden');
             document.getElementById('host-results-screen').classList.remove('hidden');
 
-            // Placar geral
             const sorted = Object.entries(playersScores).sort((a, b) => b[1] - a[1]);
             const boardEl = document.getElementById('final-scoreboard');
             boardEl.innerHTML = sorted.map(([name, score], idx) => `
@@ -406,7 +413,6 @@
                 </div>
             `).join('') || '<p class="text-slate-500 text-sm">Nenhum participante pontuou.</p>';
 
-            // Acertos por questão
             const statsEl = document.getElementById('question-stats-board');
             statsEl.innerHTML = questionCorrectCounts.map((count, idx) => `
                 <div class="flex justify-between items-center bg-zinc-950 p-3 rounded-xl border border-zinc-900 text-sm">
@@ -415,11 +421,31 @@
                 </div>
             `).join('');
 
-            // Envia pontuação final para os clientes
             broadcastToAll({
                 type: 'QUIZ_OVER',
                 scores: playersScores
             });
+        }
+
+        function downloadParticipantList() {
+            const players = Object.values(connections);
+            if (players.length === 0) {
+                alert("Nenhum participante registrado.");
+                return;
+            }
+
+            const fileContent = "=== LISTA DE PARTICIPANTES ===\n\n" + 
+                players.map(p => `Nome: ${p.name} | Matrícula: ${p.matricula}`).join("\n");
+
+            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "lista_participantes_quiz.txt";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function broadcastToAll(data) {
@@ -431,9 +457,10 @@
         function connectToHost() {
             const roomId = document.getElementById('join-room-id').value.trim();
             const playerName = document.getElementById('player-name').value.trim();
+            const playerMatricula = document.getElementById('player-matricula').value.trim();
 
-            if (!roomId || !playerName) {
-                alert('Preencha o ID da sala e o seu nome.');
+            if (!roomId || !playerName || !playerMatricula) {
+                alert('Preencha o ID da sala, o seu nome e a sua matrícula.');
                 return;
             }
 
@@ -442,7 +469,7 @@
                 hostConnection = peer.connect(roomId);
                 
                 hostConnection.on('open', () => {
-                    hostConnection.send({ type: 'JOIN', name: playerName });
+                    hostConnection.send({ type: 'JOIN', name: playerName, matricula: playerMatricula });
                     document.getElementById('client-join-screen').classList.add('hidden');
                     document.getElementById('client-game-screen').classList.remove('hidden');
                     window.myClientName = playerName;
